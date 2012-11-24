@@ -92,4 +92,3 @@ exports.for = function(API, plugin) {
         return self.API.Q.resolve();
     }
 }
-
