@@ -11,6 +11,7 @@ exports.for = function(API, plugin) {
 
         ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to `github.com`");
 
+        locator.pm = "github";
         locator.vendor = "github";
 
         var info = {};
