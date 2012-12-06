@@ -1,5 +1,6 @@
 
 const ASSERT = require("assert");
+const GITHUB = require("github");
 
 
 exports.for = function(API, plugin) {
@@ -91,5 +92,69 @@ exports.for = function(API, plugin) {
         }
 
         return self.API.Q.resolve();
+    }
+
+    plugin.latest = function(options) {
+        var self = this;
+
+        if (
+            !plugin.node.summary.declaredLocator ||
+            plugin.node.summary.declaredLocator.vendor !== "github"
+        ) return API.Q.resolve(false);
+
+        var opts = API.UTIL.copy(options);
+        opts.host = "api.github.com";
+        opts.port = 443;
+        var info = false;
+        return plugin.getExternalProxy(opts).then(function(proxy) {
+            return API.Q.call(function() {
+                var deferred = API.Q.defer();
+
+                // TODO: Teach `github` lib to proxy.
+                var github = new GITHUB({
+                    version: "3.0.0",
+                    proxy: proxy
+                });
+                // Silence log message.
+                // TODO: Remove this once fixed: https://github.com/ajaxorg/node-github/issues/63
+                github[github.version].sendError = function(err, block, msg, callback) {
+                    if (typeof err == "string") {
+                        err = new Error(err);
+                        err.code = 500;
+                    }
+                    if (callback)
+                        callback(err);
+                }
+                // TODO: Authenticate if credentials are available.
+
+                var id = plugin.node.summary.declaredLocator.id.split("/");        
+
+                github.repos.getBranches({
+                    user: id[0],
+                    repo: id[1]
+                }, function(err, result) {
+                    if (err) {
+                        if (err.code === 404) {
+                            return deferred.resolve();
+                        }
+                        return deferred.reject(err);
+                    }
+                    if (!result || result.length === 0) return deferred.resolve();
+                    var branch = plugin.node.summary.declaredLocator.selector || "master";
+                    result.forEach(function(item) {
+                        if (info) return;
+                        if (item.name === branch) {
+                            info = {
+                                rev: item.commit.sha
+                            };
+                        }
+                    });
+                    return deferred.resolve();
+                });
+                return deferred.promise;
+            });
+        }).then(function() {
+            return info;
+        });
     }
 }
