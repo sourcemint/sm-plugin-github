@@ -74,6 +74,7 @@ exports.for = function(API, plugin) {
             locator.getLocation = function(type) {
                 var locations = {};
                 locations["homepage"] = "https://github.com/" + user + "/" + repository;
+                locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + this.rev;
                 locations["git-read"] = "git://github.com/" + user + "/" + repository + ".git";
                 locations["git-write"] = "git@github.com:" + user + "/" + repository + ".git";
                 if (this.rev) {
