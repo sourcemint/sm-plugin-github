@@ -85,14 +85,66 @@ exports.for = function(API, plugin) {
             }
             // Ask git plugin to resolve locator to determine if selector is a rev.
             return plugin.node.getPlugin("git").then(function(plugin) {
-                return plugin.resolveLocator(locator, options);
+                return plugin.resolveLocator(locator, options).then(function() {
+                    // The `git` plugin was not able to derive a `rev` or `version` as repository is not cloned localy.
+                    if (locator.selector !== false && locator.rev === false && locator.version === false) {
+                        return getGithubAPI(options).then(function(github) {
+                            var deferred = API.Q.defer();
+                            var id = locator.id.split("/");
+                            github.repos.getCommit({
+                                user: id[0],
+                                repo: id[1],
+                                sha: locator.selector
+                            }, function(err, result) {
+                                if (err) {
+                                    if (err.code === 404) {
+                                        return deferred.resolve(info);
+                                    }
+                                    return deferred.reject(err);
+                                }
+                                if (result && result.sha === locator.selector) {
+                                    locator.rev = locator.selector;
+                                    locator.selector = false;
+                                }
+                                return deferred.resolve();
+                            });
+                            return deferred.promise;
+                        });
+                    }
+                });
             });
-
         } else {
             throw new Error("Not a valid github.com URL!");
         }
 
         return self.API.Q.resolve();
+    }
+
+    function getGithubAPI(options) {
+        var opts = API.UTIL.copy(options);
+        opts.host = "api.github.com";
+        opts.port = 443;
+        return plugin.getExternalProxy(opts).then(function(proxy) {
+
+            // TODO: Teach `github` lib to proxy.
+            var github = new GITHUB({
+                version: "3.0.0",
+                proxy: proxy
+            });
+            // Silence log message.
+            // TODO: Remove this once fixed: https://github.com/ajaxorg/node-github/issues/63
+            github[github.version].sendError = function(err, block, msg, callback) {
+                if (typeof err == "string") {
+                    err = new Error(err);
+                    err.code = 500;
+                }
+                if (callback)
+                    callback(err);
+            }
+            // TODO: Authenticate if credentials are available.
+
+            return github;
+        });
     }
 
     plugin.latest = function(options) {
@@ -103,33 +155,41 @@ exports.for = function(API, plugin) {
             plugin.node.summary.declaredLocator.vendor !== "github"
         ) return API.Q.resolve(false);
 
-        var opts = API.UTIL.copy(options);
-        opts.host = "api.github.com";
-        opts.port = 443;
         var info = false;
-        return plugin.getExternalProxy(opts).then(function(proxy) {
-            return API.Q.call(function() {
-                var deferred = API.Q.defer();
 
-                // TODO: Teach `github` lib to proxy.
-                var github = new GITHUB({
-                    version: "3.0.0",
-                    proxy: proxy
-                });
-                // Silence log message.
-                // TODO: Remove this once fixed: https://github.com/ajaxorg/node-github/issues/63
-                github[github.version].sendError = function(err, block, msg, callback) {
-                    if (typeof err == "string") {
-                        err = new Error(err);
-                        err.code = 500;
+        return getGithubAPI(options).then(function(github) {
+
+            var deferred = API.Q.defer();
+
+            var id = plugin.node.summary.declaredLocator.id.split("/");
+
+            // TODO: Fetch all pages.
+            github.repos.getTags({
+                user: id[0],
+                repo: id[1],
+                per_page: 100
+            }, function(err, result) {
+                if (err) {
+                    if (err.code === 404) {
+                        return deferred.resolve();
                     }
-                    if (callback)
-                        callback(err);
+                    return deferred.reject(err);
                 }
-                // TODO: Authenticate if credentials are available.
-
-                var id = plugin.node.summary.declaredLocator.id.split("/");        
-
+                info = {
+                    raw: {
+                        tags: {}
+                    },
+                    versions: []
+                };
+                if (result && result.length > 0) {
+                    result.forEach(function(item) {
+                        info.raw.tags[item.name] = item.commit.sha;
+                        info.versions.push(item.name);
+                        if (plugin.node.summary.declaredLocator.selector && item.name === plugin.node.summary.declaredLocator.selector) {
+                            info.rev = item.commit.sha;
+                        }
+                    });
+                }
                 github.repos.getBranches({
                     user: id[0],
                     repo: id[1]
@@ -141,7 +201,7 @@ exports.for = function(API, plugin) {
                         return deferred.reject(err);
                     }
                     if (!result || result.length === 0) return deferred.resolve();
-                    var branch = plugin.node.summary.declaredLocator.selector || "master";
+                    var branch = plugin.node.summary.declaredLocator.selector || "master";                    
                     result.forEach(function(item) {
                         if (info) return;
                         if (item.name === branch) {
@@ -152,10 +212,49 @@ exports.for = function(API, plugin) {
                     });
                     return deferred.resolve();
                 });
-                return deferred.promise;
             });
+
+            return deferred.promise;
         }).then(function() {
             return info;
+        });
+    }
+
+    plugin.descriptorForSelector = function(locator, selector, options) {
+        return getGithubAPI(options).then(function(github) {
+
+            var deferred = API.Q.defer();
+
+            var id = locator.id.split("/");
+
+            info = {};
+
+            if (plugin.node.latest[locator.pm].versions.indexOf(selector) >= 0) {
+                // `selector` is a tagged version.
+                info.version = selector;
+                info.rev = plugin.node.latest[locator.pm].raw.tags[selector];
+            } else {
+                // `selector` is assumed to be a ref (not a branch).
+                info.rev = selector;
+            }
+            github.repos.getContent({
+                user: id[0],
+                repo: id[1],
+                path: "package.json",
+                ref: info.rev
+            }, function(err, result) {
+                if (err) {
+                    if (err.code === 404) {
+                        return deferred.resolve(info);
+                    }
+                    return deferred.reject(err);
+                }
+                // TODO: Set `info` from `result`.
+console.log("result", result);
+throw new Error("TODO: Parse result to obtain descriptor.");
+                return deferred.resolve(info);
+            });
+            return deferred.promise;
         });
     }
 }
