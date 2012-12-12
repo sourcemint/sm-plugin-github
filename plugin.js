@@ -8,6 +8,8 @@ exports.for = function(API, plugin) {
     plugin.resolveLocator = function(locator, options) {
         var self = this;
 
+        if (!locator.vcs) locator.vcs = "git";
+
         var parsedPointer = API.URI_PARSER.parse2(locator.descriptor.pointer);
 
         ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to `github.com`");
@@ -91,10 +93,11 @@ exports.for = function(API, plugin) {
                         return getGithubAPI(options).then(function(github) {
                             var deferred = API.Q.defer();
                             var id = locator.id.split("/");
-                            github.repos.getCommit({
+                            github.gitdata.getAllReferences({
                                 user: id[0],
                                 repo: id[1],
-                                sha: locator.selector
+                                per_page: 100
+                                // TODO: Paginate.
                             }, function(err, result) {
                                 if (err) {
                                     if (err.code === 404) {
@@ -102,11 +105,38 @@ exports.for = function(API, plugin) {
                                     }
                                     return deferred.reject(err);
                                 }
-                                if (result && result.sha === locator.selector) {
-                                    locator.rev = locator.selector;
-                                    locator.selector = false;
-                                }
-                                return deferred.resolve();
+                                if (!result || result.length === 0) return deferred.resolve(info);
+                                result.forEach(function(entry) {
+                                    if (locator.rev !== false) return;
+                                    if (
+                                        entry.ref === "refs/heads/" + locator.selector ||
+                                        entry.ref === "refs/tags/" + locator.selector
+                                    ) {
+                                        locator.rev = entry.object.sha;
+                                    }
+                                    else if (entry.object.sha === locator.selector) {
+                                        locator.rev = entry.object.sha;
+                                        locator.selector = false;
+                                    }
+                                });
+                                if (locator.selector === false) return deferred.resolve();
+                                return github.repos.getCommit({
+                                    user: id[0],
+                                    repo: id[1],
+                                    sha: locator.selector
+                                }, function(err, result) {
+                                    if (err) {
+                                        if (err.code === 404) {
+                                            return deferred.resolve(info);
+                                        }
+                                        return deferred.reject(err);
+                                    }
+                                    if (result && result.sha === locator.selector) {
+                                        locator.rev = locator.selector;
+                                        locator.selector = false;
+                                    }
+                                    return deferred.resolve();
+                                });
                             });
                             return deferred.promise;
                         });
@@ -149,7 +179,6 @@ exports.for = function(API, plugin) {
 
     plugin.latest = function(options) {
         var self = this;
-
         if (
             !plugin.node.summary.declaredLocator ||
             plugin.node.summary.declaredLocator.vendor !== "github"
@@ -183,10 +212,12 @@ exports.for = function(API, plugin) {
                 };
                 if (result && result.length > 0) {
                     result.forEach(function(item) {
-                        info.raw.tags[item.name] = item.commit.sha;
-                        info.versions.push(item.name);
-                        if (plugin.node.summary.declaredLocator.selector && item.name === plugin.node.summary.declaredLocator.selector) {
-                            info.rev = item.commit.sha;
+                        if (item && item.commit) {
+                            info.raw.tags[item.name] = item.commit.sha;
+                            info.versions.push(item.name);
+                            if (plugin.node.summary.declaredLocator.selector && item.name === plugin.node.summary.declaredLocator.selector) {
+                                info.rev = item.commit.sha;
+                            }
                         }
                     });
                 }
@@ -227,7 +258,7 @@ exports.for = function(API, plugin) {
 
             var id = locator.id.split("/");
 
-            info = {};
+            var info = {};
 
             if (plugin.node.latest[locator.pm].versions.indexOf(selector) >= 0) {
                 // `selector` is a tagged version.
@@ -249,9 +280,18 @@ exports.for = function(API, plugin) {
                     }
                     return deferred.reject(err);
                 }
-                // TODO: Set `info` from `result`.
-console.log("result", result);
-throw new Error("TODO: Parse result to obtain descriptor.");
+                if (result) {
+                    if (result.encoding === "base64") {
+                        try {
+                            info.descriptor = new Buffer(result.content, "base64").toString("ascii");
+                        } catch(err) {
+                            err.message += " (parsing JSON descriptor for '" + locator + "')";
+                            return deferred.reject(err);
+                        }
+                    } else {
+                        return deferred.reject(new Error("Result encoding '" + result.encoding + "' not supported!"));
+                    }
+                }
                 return deferred.resolve(info);
             });
             return deferred.promise;
