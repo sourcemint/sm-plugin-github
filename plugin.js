@@ -93,16 +93,26 @@ exports.for = function(API, plugin) {
                         return getGithubAPI(options).then(function(github) {
                             var deferred = API.Q.defer();
                             var id = locator.id.split("/");
-                            github.gitdata.getAllReferences({
+                            var args = {
                                 user: id[0],
                                 repo: id[1],
                                 per_page: 100
                                 // TODO: Paginate.
-                            }, function(err, result) {
+                            };
+                            var strArgs = JSON.stringify(args);
+                            github.gitdata.getAllReferences(args, function(err, result) {
                                 if (err) {
-                                    if (err.code === 404) {
+                                    err.message += " (for `gitdata.getAllReferences()`)";
+                                    if (
+                                        // Not found.
+                                        err.code === 404 ||
+                                        // Empty.
+                                        err.code === 409
+                                    ) {
                                         return deferred.resolve(info);
                                     }
+                                    console.error("`locator.id` is", locator.id);
+                                    console.error("`result` is", result);
                                     return deferred.reject(err);
                                 }
                                 if (!result || result.length === 0) return deferred.resolve(info);
@@ -120,15 +130,20 @@ exports.for = function(API, plugin) {
                                     }
                                 });
                                 if (locator.selector === false) return deferred.resolve();
-                                return github.repos.getCommit({
+                                var args = {
                                     user: id[0],
                                     repo: id[1],
                                     sha: locator.selector
-                                }, function(err, result) {
+                                };
+                                var strArgs = JSON.stringify(args);
+                                return github.repos.getCommit(args, function(err, result) {
                                     if (err) {
+                                        err.message += " (for `gitdata.getAllReferences()`)";
                                         if (err.code === 404) {
                                             return deferred.resolve(info);
                                         }
+                                        console.error("`locator.id` is", locator.id);
+                                        console.error("`result` is", result);
                                         return deferred.reject(err);
                                     }
                                     if (result && result.sha === locator.selector) {
