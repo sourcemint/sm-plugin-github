@@ -3,6 +3,8 @@ const ASSERT = require("assert");
 const GITHUB = require("github");
 
 
+var githubApis = {};
+
 exports.for = function(API, plugin) {
 
     plugin.resolveLocator = function(locator, options) {
@@ -102,17 +104,21 @@ exports.for = function(API, plugin) {
                             var strArgs = JSON.stringify(args);
                             github.gitdata.getAllReferences(args, function(err, result) {
                                 if (err) {
-                                    err.message += " (for `gitdata.getAllReferences()`)";
-                                    if (
-                                        // Not found.
-                                        err.code === 404 ||
-                                        // Empty.
-                                        err.code === 409
-                                    ) {
-                                        return deferred.resolve(info);
+                                    if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                                        err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                                    } else {
+                                        err.message += " (for `gitdata.getAllReferences()`)";
+                                        if (
+                                            // Not found.
+                                            err.code === 404 || err.code === 403 ||
+                                            // Empty.
+                                            err.code === 409
+                                        ) {
+                                            return deferred.resolve(info);
+                                        }
+                                        console.error("`locator.id` is", locator.id);
+                                        console.error("`result` is", result);
                                     }
-                                    console.error("`locator.id` is", locator.id);
-                                    console.error("`result` is", result);
                                     return deferred.reject(err);
                                 }
                                 if (!result || result.length === 0) return deferred.resolve(info);
@@ -162,14 +168,20 @@ exports.for = function(API, plugin) {
             throw new Error("Not a valid github.com URL!");
         }
 
-        return self.API.Q.resolve();
+        return API.Q.resolve();
     }
+
 
     function getGithubAPI(options) {
         var opts = API.UTIL.copy(options);
         opts.host = "api.github.com";
         opts.port = 443;
-        return plugin.getExternalProxy(opts).then(function(proxy) {
+        var id = opts.host + ":" + opts.port;
+        if (githubApis[id]) {
+            return githubApis[id].promise;
+        }
+        githubApis[id] = API.Q.defer();
+        plugin.getExternalProxy(opts).then(function(proxy) {
 
             // TODO: Teach `github` lib to proxy.
             var github = new GITHUB({
@@ -186,10 +198,35 @@ exports.for = function(API, plugin) {
                 if (callback)
                     callback(err);
             }
-            // TODO: Authenticate if credentials are available.
 
-            return github;
-        });
+            function authenticate() {
+                var credentials = plugin.core.getCredentials("github.com/sourcemint/sm-plugin-github/0");
+                if (credentials && credentials.token) {
+                    return API.Q.resolve(credentials.token);
+                }
+                return API.SM_NODE_SERVER.requestOAuth("github", plugin.core.getProfile("name")).then(function(creds) {
+                    ASSERT(typeof creds.token === "string");
+                    credentials = creds;
+                    plugin.core.setCredentials("github.com/sourcemint/sm-plugin-github/0", credentials);
+                    return credentials.token;
+                }).fail(function(err) {
+                    console.error(err.stack);
+                    console.error("RECOVER: Continuing without authenticating to github. Limit of 60 api calls per hour apply.");
+                    return false;
+                });
+            }
+
+            return authenticate().then(function(token) {
+                if (token) {
+                    github.authenticate({
+                        type: "oauth",
+                        token: token
+                    });
+                }
+                return github;
+            });
+        }).then(githubApis[id].resolve, githubApis[id].reject);
+        return githubApis[id].promise;
     }
 
     plugin.latest = function(options) {
@@ -214,8 +251,12 @@ exports.for = function(API, plugin) {
                 per_page: 100
             }, function(err, result) {
                 if (err) {
-                    if (err.code === 404) {
-                        return deferred.resolve();
+                    if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                        err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                    } else {
+                        if (err.code === 404 || err.code === 403) {
+                            return deferred.resolve();
+                        }
                     }
                     return deferred.reject(err);
                 }
@@ -290,8 +331,12 @@ exports.for = function(API, plugin) {
                 ref: info.rev
             }, function(err, result) {
                 if (err) {
-                    if (err.code === 404) {
-                        return deferred.resolve(info);
+                    if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                        err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                    } else {
+                        if (err.code === 404 || err.code === 403) {
+                            return deferred.resolve(info);
+                        }
                     }
                     return deferred.reject(err);
                 }
