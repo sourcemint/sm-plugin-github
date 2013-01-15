@@ -222,6 +222,7 @@ exports.for = function(API, plugin) {
                         type: "oauth",
                         token: token
                     });
+                    // TODO: If request fails due to auth failure remove `token` from stored credentials and re-authorize.
                 }
                 return github;
             });
@@ -277,6 +278,7 @@ exports.for = function(API, plugin) {
                         }
                     });
                 }
+
                 github.repos.getBranches({
                     user: id[0],
                     repo: id[1]
@@ -287,16 +289,25 @@ exports.for = function(API, plugin) {
                         }
                         return deferred.reject(err);
                     }
-                    if (!result || result.length === 0) return deferred.resolve();
-                    var branch = plugin.node.summary.declaredLocator.selector || "master";                    
-                    result.forEach(function(item) {
-                        if (info) return;
-                        if (item.name === branch) {
-                            info = {
-                                rev: item.commit.sha
-                            };
-                        }
-                    });
+                    if (result && result.length > 0) {
+                        var branch = plugin.node.summary.declaredLocator.selector || "master";                    
+                        result.forEach(function(item) {
+                            if (typeof info.rev !== "undefined") return;
+                            if (item.name === branch) {
+                                info.rev = item.commit.sha;
+                            }
+                        });
+                    }
+                    if (typeof info.rev === "undefined") {
+                        // No tags nor branches matching selector so we default to latest
+                        // commit on branch master.
+                        result.forEach(function(item) {
+                            if (typeof info.rev !== "undefined") return;
+                            if (item.name === "master") {
+                                info.rev = item.commit.sha;
+                            }
+                        });
+                    }
                     return deferred.resolve();
                 });
             });
