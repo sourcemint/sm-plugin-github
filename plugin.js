@@ -14,7 +14,7 @@ exports.for = function(API, plugin) {
 
         var parsedPointer = API.URI_PARSER.parse2(locator.descriptor.pointer);
 
-        ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to `github.com`");
+        ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to 'github.com', not '" + parsedPointer.hostname + "'");
 
         locator.pm = "github";
         locator.vendor = "github";
