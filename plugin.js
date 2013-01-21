@@ -49,7 +49,9 @@ exports.for = function(API, plugin) {
             if (!m) {
                 throw new Error("Not a valid github.com public git URL!");
             }
-            parsedPointer.pathname = "/" + m[1] + "/" + m[2] + "/tree/master";
+            // NOTE: `locator.version` may not be an exact tag but that is ok because a locator
+            //       does not deal with exact tags and only standard versions.
+            parsedPointer.pathname = "/" + m[1] + "/" + m[2] + "/tree/" + (locator.rev || locator.version || "master");
         }
         // PINF-style uri. e.g. `github.com/sourcemint/sm-plugin-sm/~0.1.0`
         else if (m = parsedPointer.pathname.match(/^\/([^\/]*)\/([^\/]*)\/(~?\d[\.\d-\w]*)$/)) {
@@ -65,7 +67,14 @@ exports.for = function(API, plugin) {
             locator.id = user + "/" + repository;
 
             if (!m[3] && !m[4]) {
-                locator.selector = "master";
+                if (locator.rev) {
+                    locator.selector = locator.rev;
+                } else
+                if (locator.version) {
+                    locator.selector = locator.version;
+                } else {
+                    locator.selector = "master";
+                }
             }
             // NOTE: We don't know if we have a selector or rev yet.
             else if (!m[3] && m[4]) {
