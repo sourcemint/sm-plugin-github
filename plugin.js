@@ -209,14 +209,14 @@ exports.for = function(API, plugin) {
             }
 
             function authenticate() {
-                var credentials = plugin.core.getCredentials("github.com/sourcemint/sm-plugin-github/0");
+                var credentials = plugin.core.getCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"]);
                 if (credentials && credentials.token) {
                     return API.Q.resolve(credentials.token);
                 }
                 return API.SM_NODE_SERVER.requestOAuth("github", plugin.core.getProfile("name")).then(function(creds) {
                     ASSERT(typeof creds.token === "string");
                     credentials = creds;
-                    plugin.core.setCredentials("github.com/sourcemint/sm-plugin-github/0", credentials);
+                    plugin.core.setCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"], credentials);
                     return credentials.token;
                 }).fail(function(err) {
                     console.error(err.stack);
