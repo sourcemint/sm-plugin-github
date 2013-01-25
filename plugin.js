@@ -247,12 +247,12 @@ exports.for = function(API, plugin) {
         return githubApis[id].promise;
     }
 
-    plugin.latest = function(options) {
+    plugin.latest = function(options, callback) {
         var self = this;
         if (
             !plugin.node.summary.declaredLocator ||
             plugin.node.summary.declaredLocator.vendor !== "github"
-        ) return API.Q.resolve(false);
+        ) return callback(null, false);
 
         var info = false;
 
@@ -331,8 +331,8 @@ exports.for = function(API, plugin) {
 
             return deferred.promise;
         }).then(function() {
-            return info;
-        });
+            return callback(null, info);
+        }, callback);
     }
 
     plugin.descriptorForSelector = function(locator, selector, options, callback) {
