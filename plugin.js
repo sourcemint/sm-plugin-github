@@ -206,10 +206,11 @@ exports.for = function(API, plugin) {
         ];
         function fail(err) {
             if (!githubApis[id]) return;
-            githubApis[id].forEach(function(callback) {
+            var callbacks = githubApis[id];
+            delete githubApis[id];
+            callbacks.forEach(function(callback) {
                 callback(err);
             });
-            delete githubApis[id];
         }
         return plugin.getExternalProxy(opts, function(err, proxy) {
             if (err) return fail(err);
@@ -256,10 +257,11 @@ exports.for = function(API, plugin) {
                     });
                     // TODO: If request fails due to auth failure remove `token` from stored credentials and re-authorize.
                 }
-                githubApis[id].forEach(function(callback) {
+                var callbacks = githubApis[id];
+                githubApis[id] = github;
+                callbacks.forEach(function(callback) {
                     callback(null, github);
                 });
-                githubApis[id] = github;
                 return;
             });
         });
