@@ -7,7 +7,7 @@ var githubApis = {};
 
 exports.for = function(API, plugin) {
 
-    plugin.resolveLocator = function(locator, options) {
+    plugin.resolveLocator = function(locator, options, callback) {
         var self = this;
 
         if (!locator.vcs) locator.vcs = "git";
@@ -24,12 +24,12 @@ exports.for = function(API, plugin) {
         if (parsedPointer.protocol === "git:") {
             var m = parsedPointer.pathname.match(/^\/([^\/]*)\/([^\/]*?)(.git)?$/);
             if (!m) {
-                throw new Error("Not a valid github.com public git URL!");
+                return callback(new Error("Not a valid github.com public git URL!"));
             }
             parsedPointer.pathname = "/" + m[1] + "/" + m[2];
             if (parsedPointer.hash) {
                 if (/^#\//.test(parsedPointer.hash)) {
-                    throw new Error("Not a valid github.com URL '" + parsedPointer.href + "'! Hash/branch '" + parsedPointer.hash.substring(1) + "' may not begin with '/'!");
+                    return callback(new Error("Not a valid github.com URL '" + parsedPointer.href + "'! Hash/branch '" + parsedPointer.hash.substring(1) + "' may not begin with '/'!"));
                 }
                 parsedPointer.pathname += "/tree/" + parsedPointer.hash.substring(1);
             }
@@ -37,7 +37,7 @@ exports.for = function(API, plugin) {
         else if (/^git@/.test(parsedPointer.pathname)) {
             var m = parsedPointer.pathname.match(/^git@([^:]*):([^\/]*)\/([^\/]*).git$/);
             if (!m) {
-                throw new Error("Not a valid github.com private git URL!");
+                return callback(new Error("Not a valid github.com private git URL!"));
             }
             parsedPointer.pathname = "/" + m[2] + "/" + m[3];
             if (parsedPointer.hash) {
@@ -47,7 +47,7 @@ exports.for = function(API, plugin) {
         else if (/^\/(.*?)\.git$/.test(parsedPointer.pathname)) {
             var m = parsedPointer.pathname.match(/^\/([^\/]*)\/([^\/]*)\.git$/);
             if (!m) {
-                throw new Error("Not a valid github.com public git URL!");
+                return callback(new Error("Not a valid github.com public git URL!"));
             }
             // NOTE: `locator.version` may not be an exact tag but that is ok because a locator
             //       does not deal with exact tags and only standard versions.
@@ -97,13 +97,13 @@ exports.for = function(API, plugin) {
                 return (type)?locations[type]:locations;
             }
 
-            var deferred = API.Q.defer();
-
             // Ask git plugin to resolve locator to determine if selector is a rev.
-            plugin.node.getPlugin("git", function(err, plugin) {
-                if (err) return deferred.reject(err);
+            return plugin.node.getPlugin("git", function(err, plugin) {
+                if (err) return callback(err);
 
-                return plugin.resolveLocator(locator, options).then(function() {
+                return plugin.resolveLocator(locator, options, function(err, locator) {
+                    if (err) return callback(err);
+
                     // The `git` plugin was not able to derive a `rev` or `version` as repository is not cloned localy.
                     if (locator.selector !== false && locator.rev === false && locator.version === false) {
                         return getGithubAPI(options).then(function(github) {
@@ -174,17 +174,18 @@ exports.for = function(API, plugin) {
                                 });
                             });
                             return deferred.promise;
-                        });
+                        }).then(function() {
+                            return callback(null, locator);
+                        }, callback);
                     }
-                }).then(deferred.resolve, deferred.reject);
+                    return callback(null, locator);
+                });
             });
-
-            return deferred.promise;
         } else {
-            throw new Error("Not a valid github.com URL!");
+            return callback(new Error("Not a valid github.com URL!"));
         }
 
-        return API.Q.resolve();
+        return callback(null, locator);
     }
 
 
