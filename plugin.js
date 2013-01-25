@@ -106,8 +106,9 @@ exports.for = function(API, plugin) {
 
                     // The `git` plugin was not able to derive a `rev` or `version` as repository is not cloned localy.
                     if (locator.selector !== false && locator.rev === false && locator.version === false) {
-                        return getGithubAPI(options).then(function(github) {
-                            var deferred = API.Q.defer();
+                        return getGithubAPI(options, function(err, github) {
+                            if (err) return callback(err);
+
                             var id = locator.id.split("/");
                             var args = {
                                 user: id[0],
@@ -116,7 +117,7 @@ exports.for = function(API, plugin) {
                                 // TODO: Paginate.
                             };
                             var strArgs = JSON.stringify(args);
-                            github.gitdata.getAllReferences(args, function(err, result) {
+                            return github.gitdata.getAllReferences(args, function(err, result) {
                                 if (err) {
                                     if (result && result.headers["x-ratelimit-remaining"] === "0") {
                                         err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
@@ -128,14 +129,14 @@ exports.for = function(API, plugin) {
                                             // Empty.
                                             err.code === 409
                                         ) {
-                                            return deferred.resolve(info);
+                                            return callback(null, locator);
                                         }
                                         console.error("`locator.id` is", locator.id);
                                         console.error("`result` is", result);
                                     }
-                                    return deferred.reject(err);
+                                    return callback(err);
                                 }
-                                if (!result || result.length === 0) return deferred.resolve(info);
+                                if (!result || result.length === 0) return callback(null, locator);
                                 result.forEach(function(entry) {
                                     if (locator.rev !== false) return;
                                     if (
@@ -149,7 +150,7 @@ exports.for = function(API, plugin) {
                                         locator.selector = false;
                                     }
                                 });
-                                if (locator.selector === false) return deferred.resolve();
+                                if (locator.selector === false) return callback(null, locator);
                                 var args = {
                                     user: id[0],
                                     repo: id[1],
@@ -160,24 +161,22 @@ exports.for = function(API, plugin) {
                                     if (err) {
                                         err.message += " (for `gitdata.getAllReferences()`)";
                                         if (err.code === 404) {
-                                            return deferred.resolve(info);
+                                            return callback(null, locator);
                                         }
                                         console.error("`locator.id` is", locator.id);
                                         console.error("`result` is", result);
-                                        return deferred.reject(err);
+                                        return callback(err);
                                     }
                                     if (result && result.sha === locator.selector) {
                                         locator.rev = locator.selector;
                                         locator.selector = false;
                                     }
-                                    return deferred.resolve();
+                                    return callback(null, locator);
                                 });
                             });
-                            return deferred.promise;
-                        }).then(function() {
-                            return callback(null, locator);
-                        }, callback);
+                        });
                     }
+
                     return callback(null, locator);
                 });
             });
@@ -189,15 +188,22 @@ exports.for = function(API, plugin) {
     }
 
 
-    function getGithubAPI(options) {
+    function getGithubAPI(options, callback) {
         var opts = API.UTIL.copy(options);
         opts.host = "api.github.com";
         opts.port = 443;
         var id = opts.host + ":" + opts.port;
         if (githubApis[id]) {
-            return githubApis[id].promise;
+            if (API.UTIL.isArrayLike(githubApis[id])) {
+                githubApis[id].push(callback);
+            } else {
+                callback(null, githubApis[id]);
+            }
+            return;
         }
-        githubApis[id] = API.Q.defer();
+        githubApis[id] = [
+            callback
+        ];
         plugin.getExternalProxy(opts).then(function(proxy) {
 
             // TODO: Teach `github` lib to proxy.
@@ -243,8 +249,17 @@ exports.for = function(API, plugin) {
                 }
                 return github;
             });
-        }).then(githubApis[id].resolve, githubApis[id].reject);
-        return githubApis[id].promise;
+        }).then(function(api) {
+            githubApis[id].forEach(function(callback) {
+                callback(null, api);
+            });
+            githubApis[id] = api;
+        }, function(err) {
+            githubApis[id].forEach(function(callback) {
+                callback(err);
+            });
+            delete githubApis[id];
+        });
     }
 
     plugin.latest = function(options, callback) {
@@ -256,14 +271,13 @@ exports.for = function(API, plugin) {
 
         var info = false;
 
-        return getGithubAPI(options).then(function(github) {
-
-            var deferred = API.Q.defer();
+        return getGithubAPI(options, function(err, github) {
+            if (err) return callback(err);
 
             var id = plugin.node.summary.declaredLocator.id.split("/");
 
             // TODO: Fetch all pages.
-            github.repos.getTags({
+            return github.repos.getTags({
                 user: id[0],
                 repo: id[1],
                 per_page: 100
@@ -273,10 +287,10 @@ exports.for = function(API, plugin) {
                         err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
                     } else {
                         if (err.code === 404 || err.code === 403) {
-                            return deferred.resolve();
+                            return callback(null, info);
                         }
                     }
-                    return deferred.reject(err);
+                    return callback(err);
                 }
                 info = {
                     raw: {
@@ -296,15 +310,15 @@ exports.for = function(API, plugin) {
                     });
                 }
 
-                github.repos.getBranches({
+                return github.repos.getBranches({
                     user: id[0],
                     repo: id[1]
                 }, function(err, result) {
                     if (err) {
                         if (err.code === 404) {
-                            return deferred.resolve();
+                            return callback(null, info);
                         }
-                        return deferred.reject(err);
+                        return callback(err);
                     }
                     if (result && result.length > 0) {
                         var branch = plugin.node.summary.declaredLocator.selector || "master";                    
@@ -325,20 +339,15 @@ exports.for = function(API, plugin) {
                             }
                         });
                     }
-                    return deferred.resolve();
+                    return callback(null, info);
                 });
             });
-
-            return deferred.promise;
-        }).then(function() {
-            return callback(null, info);
-        }, callback);
+        });
     }
 
     plugin.descriptorForSelector = function(locator, selector, options, callback) {
-        return getGithubAPI(options).then(function(github) {
-
-            var deferred = API.Q.defer();
+        return getGithubAPI(options, function(err, github) {
+            if (err) return callback(err);
 
             var id = locator.id.split("/");
 
@@ -352,7 +361,7 @@ exports.for = function(API, plugin) {
                 // `selector` is assumed to be a ref (not a branch).
                 info.rev = selector;
             }
-            github.repos.getContent({
+            return github.repos.getContent({
                 user: id[0],
                 repo: id[1],
                 path: "package.json",
@@ -363,10 +372,10 @@ exports.for = function(API, plugin) {
                         err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
                     } else {
                         if (err.code === 404 || err.code === 403) {
-                            return deferred.resolve(info);
+                            return callback(null, info);
                         }
                     }
-                    return deferred.reject(err);
+                    return callback(err);
                 }
                 if (result) {
                     if (result.encoding === "base64") {
@@ -374,17 +383,14 @@ exports.for = function(API, plugin) {
                             info.descriptor = new Buffer(result.content, "base64").toString("ascii");
                         } catch(err) {
                             err.message += " (parsing JSON descriptor for '" + locator + "')";
-                            return deferred.reject(err);
+                            return callback(err);
                         }
                     } else {
-                        return deferred.reject(new Error("Result encoding '" + result.encoding + "' not supported!"));
+                        return callback(new Error("Result encoding '" + result.encoding + "' not supported!"));
                     }
                 }
-                return deferred.resolve(info);
+                return callback(null, info);
             });
-            return deferred.promise;
-        }).then(function(info) {
-            return callback(null, info);
-        }, callback);
+        });
     }
 }
