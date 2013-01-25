@@ -334,7 +334,7 @@ exports.for = function(API, plugin) {
         });
     }
 
-    plugin.descriptorForSelector = function(locator, selector, options) {
+    plugin.descriptorForSelector = function(locator, selector, options, callback) {
         return getGithubAPI(options).then(function(github) {
 
             var deferred = API.Q.defer();
@@ -382,6 +382,8 @@ exports.for = function(API, plugin) {
                 return deferred.resolve(info);
             });
             return deferred.promise;
-        });
+        }).then(function(info) {
+            return callback(null, info);
+        }, callback);
     }
 }
