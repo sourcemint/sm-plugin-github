@@ -204,7 +204,15 @@ exports.for = function(API, plugin) {
         githubApis[id] = [
             callback
         ];
-        plugin.getExternalProxy(opts).then(function(proxy) {
+        function fail(err) {
+            if (!githubApis[id]) return;
+            githubApis[id].forEach(function(callback) {
+                callback(err);
+            });
+            delete githubApis[id];
+        }
+        return plugin.getExternalProxy(opts, function(err, proxy) {
+            if (err) return fail(err);
 
             // TODO: Teach `github` lib to proxy.
             var github = new GITHUB({
@@ -222,24 +230,25 @@ exports.for = function(API, plugin) {
                     callback(err);
             }
 
-            function authenticate() {
+            function authenticate(callback) {
                 var credentials = plugin.core.getCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"]);
                 if (credentials && credentials.token) {
-                    return API.Q.resolve(credentials.token);
+                    return callback(null, credentials.token);
                 }
                 return API.SM_NODE_SERVER.requestOAuth("github", plugin.core.getProfile("name")).then(function(creds) {
                     ASSERT(typeof creds.token === "string");
                     credentials = creds;
                     plugin.core.setCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"], credentials);
-                    return credentials.token;
+                    return callback(null, credentials.token);
                 }).fail(function(err) {
                     console.error(err.stack);
                     console.error("RECOVER: Continuing without authenticating to github. Limit of 60 api calls per hour apply.");
-                    return false;
+                    return callback(null, false);
                 });
             }
 
-            return authenticate().then(function(token) {
+            return authenticate(function(err, token) {
+                if (err) return fail(err);
                 if (token) {
                     github.authenticate({
                         type: "oauth",
@@ -247,18 +256,12 @@ exports.for = function(API, plugin) {
                     });
                     // TODO: If request fails due to auth failure remove `token` from stored credentials and re-authorize.
                 }
-                return github;
+                githubApis[id].forEach(function(callback) {
+                    callback(null, github);
+                });
+                githubApis[id] = github;
+                return;
             });
-        }).then(function(api) {
-            githubApis[id].forEach(function(callback) {
-                callback(null, api);
-            });
-            githubApis[id] = api;
-        }, function(err) {
-            githubApis[id].forEach(function(callback) {
-                callback(err);
-            });
-            delete githubApis[id];
         });
     }
 
