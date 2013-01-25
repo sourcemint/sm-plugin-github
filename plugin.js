@@ -96,8 +96,13 @@ exports.for = function(API, plugin) {
                 }
                 return (type)?locations[type]:locations;
             }
+
+            var deferred = API.Q.defer();
+
             // Ask git plugin to resolve locator to determine if selector is a rev.
-            return plugin.node.getPlugin("git").then(function(plugin) {
+            plugin.node.getPlugin("git", function(err, plugin) {
+                if (err) return deferred.reject(err);
+
                 return plugin.resolveLocator(locator, options).then(function() {
                     // The `git` plugin was not able to derive a `rev` or `version` as repository is not cloned localy.
                     if (locator.selector !== false && locator.rev === false && locator.version === false) {
@@ -171,8 +176,10 @@ exports.for = function(API, plugin) {
                             return deferred.promise;
                         });
                     }
-                });
+                }).then(deferred.resolve, deferred.reject);
             });
+
+            return deferred.promise;
         } else {
             throw new Error("Not a valid github.com URL!");
         }
