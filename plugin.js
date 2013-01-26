@@ -398,4 +398,34 @@ exports.for = function(API, plugin) {
             });
         });
     }
+
+    plugin.hasRevInHistory = function(rev, options, callback) {
+        if (!plugin.node.summary.declaredLocator) return callback(null, false);
+        return getGithubAPI(options, function(err, github) {
+            if (err) return callback(err);
+
+            var id = plugin.node.summary.declaredLocator.id.split("/");
+
+            return github.gitdata.getCommit({
+                user: id[0],
+                repo: id[1],
+                sha: rev
+            }, function(err, result) {
+                if (err) {
+                    if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                        err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                    } else {
+                        if (err.code === 404 || err.code === 403) {
+                            return callback(null, false);
+                        }
+                    }
+                    return callback(err);
+                }
+                if (result) {
+                    return callback(null, true);
+                }
+                return callback(null, false);
+            });
+        });
+    }
 }
