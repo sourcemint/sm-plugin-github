@@ -7,8 +7,10 @@ var githubApis = {};
 
 exports.for = function(API, plugin) {
 
-    plugin.resolveLocator = function(locator, options, callback) {
+    plugin.resolveLocator = function(originalLocator, options, callback) {
         var self = this;
+
+        var locator = originalLocator.clone();
 
         if (!locator.vcs) locator.vcs = "git";
 
@@ -58,7 +60,17 @@ exports.for = function(API, plugin) {
             parsedPointer.pathname = "/" + m[1] + "/" + m[2] + "/tree/" + m[3];
         }
 
-        if((m = parsedPointer.pathname.match(/^\/([^\/]*)\/([^\/]*)\/?(?:(?:tarball|zipball|tree|commit|commits|tags)\/(.*?))?\/?(?:\/([^\/]*))?$/))) {
+        var matchPath = parsedPointer.pathname;
+
+/*
+        // e.g. http://github.com/downloads/vakata/jstree/jstree_pre1.0_fix_1.zip
+        m = matchPath.match(/^(\/downloads)(\/[^\/]*\/[^\/]*)(\/.*)$/);
+        if (m) {
+            matchPath = m[2] + m[1] + m[3];
+        }
+*/
+
+        if((m = matchPath.match(/^\/([^\/]*)\/([^\/]*)\/?(?:(?:tarball|zipball|tree|commit|commits|tags)\/(.*?))?\/?(?:\/([^\/]*))?$/))) {
 
             var user = m[1];
             var repository = m[2];
@@ -92,7 +104,7 @@ exports.for = function(API, plugin) {
                 locations["git-write"] = "git@github.com:" + user + "/" + repository + ".git";
                 if (this.rev) {
                     locations["zip"] = "https://github.com/" + user + "/" + repository + "/zipball/" + this.rev;
-                    locations["tar"] = "https://github.com/" + user + "/" + repository + "/tarball/" + this.rev;
+                    locations["gzip"] = "https://github.com/" + user + "/" + repository + "/tarball/" + this.rev;
                 }
                 return (type)?locations[type]:locations;
             }
@@ -180,11 +192,10 @@ exports.for = function(API, plugin) {
                     return callback(null, locator);
                 });
             });
+            return callback(null, locator);
         } else {
-            return callback(new Error("Not a valid github.com URL!"));
+            return callback(null, originalLocator);
         }
-
-        return callback(null, locator);
     }
 
 
