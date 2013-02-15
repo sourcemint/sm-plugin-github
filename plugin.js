@@ -244,14 +244,28 @@ exports.for = function(API, plugin) {
 
             function authenticate(callback) {
                 var credentials = plugin.core.getCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"]);
-                if (credentials && credentials.token) {
-                    return callback(null, credentials.token);
+                function respond(credentials) {
+                    if (credentials.token) {
+                        return callback(null, {
+                            type: "oauth",
+                            token: credentials.token
+                        });
+                    } else {
+                        return callback(null, {
+                            type: "basic",
+                            username: credentials.username,
+                            password: credentials.password
+                        });
+                    }
+                }
+                if (credentials) {
+                    return respond(credentials);
                 }
                 return API.SM_NODE_SERVER.requestOAuth("github", plugin.core.getProfile("name")).then(function(creds) {
                     ASSERT(typeof creds.token === "string");
                     credentials = creds;
                     plugin.core.setCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"], credentials);
-                    return callback(null, credentials.token);
+                    return respond(credentials);
                 }).fail(function(err) {
                     console.error(err.stack);
                     console.error("RECOVER: Continuing without authenticating to github. Limit of 60 api calls per hour apply.");
@@ -259,13 +273,10 @@ exports.for = function(API, plugin) {
                 });
             }
 
-            return authenticate(function(err, token) {
+            return authenticate(function(err, credentials) {
                 if (err) return fail(err);
-                if (token) {
-                    github.authenticate({
-                        type: "oauth",
-                        token: token
-                    });
+                if (credentials) {
+                    github.authenticate(credentials);
                     // TODO: If request fails due to auth failure remove `token` from stored credentials and re-authorize.
                 }
                 var callbacks = githubApis[id];
