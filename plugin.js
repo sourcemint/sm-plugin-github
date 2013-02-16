@@ -100,6 +100,7 @@ exports.for = function(API, plugin) {
                 var locations = {};
                 locations["homepage"] = "https://github.com/" + user + "/" + repository;
                 locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + (this.rev || this.version || "");
+                locations["uid"] = "github.com/" + user + "/" + repository + "/";
                 locations["git-read"] = "git://github.com/" + user + "/" + repository + ".git";
                 locations["git-write"] = "git@github.com:" + user + "/" + repository + ".git";
                 if (this.rev) {
