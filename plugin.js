@@ -130,6 +130,8 @@ exports.for = function(API, plugin) {
                                 // TODO: Paginate.
                             };
                             var strArgs = JSON.stringify(args);
+                            // TODO: This will hang if the target repo is empty.
+                            //       See: https://github.com/sourcemint/sm/issues/6
                             return github.gitdata.getAllReferences(args, function(err, result) {
                                 if (err) {
                                     if (result && result.headers["x-ratelimit-remaining"] === "0") {
@@ -144,8 +146,8 @@ exports.for = function(API, plugin) {
                                         ) {
                                             return callback(null, locator);
                                         }
-                                        console.error("`locator.id` is", locator.id);
-                                        console.error("`result` is", result);
+                                        console.error("[1]`locator.id` is", locator.id);
+                                        console.error("[1]`result` is", result);
                                     }
                                     return callback(err);
                                 }
@@ -176,8 +178,8 @@ exports.for = function(API, plugin) {
                                         if (err.code === 404) {
                                             return callback(null, locator);
                                         }
-                                        console.error("`locator.id` is", locator.id);
-                                        console.error("`result` is", result);
+                                        console.error("[2]`locator.id` is", locator.id);
+                                        console.error("[2]`result` is", result);
                                         return callback(err);
                                     }
                                     if (result && result.sha === locator.selector) {
