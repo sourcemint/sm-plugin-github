@@ -206,7 +206,7 @@ exports.for = function(API, plugin) {
         var opts = API.UTIL.copy(options);
         opts.host = "api.github.com";
         opts.port = 443;
-        var id = opts.host + ":" + opts.port;
+        var id = opts.host + ":" + opts.port + ":" + opts.time;
         if (githubApis[id]) {
             if (API.UTIL.isArrayLike(githubApis[id])) {
                 githubApis[id].push(callback);
@@ -420,6 +420,35 @@ exports.for = function(API, plugin) {
                     }
                 }
                 return callback(null, info);
+            });
+        });
+    }
+
+    plugin.isRevDescendant = function(parentRev, childRev, options, callback) {
+        if (!plugin.node.summary.declaredLocator) return callback(null, false);
+        return getGithubAPI(options, function(err, github) {
+            if (err) return callback(err);
+            var id = plugin.node.summary.declaredLocator.id.split("/");
+            return github.repos.compareCommits({
+                user: id[0],
+                repo: id[1],
+                base: childRev,
+                head: parentRev
+            }, function(err, result) {
+                if (err) {
+                    if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                        err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                    } else {
+                        if (err.code === 404 || err.code === 403) {
+                            return callback(null, false);
+                        }
+                    }
+                    return callback(err);
+                }
+                if (result && result.behind_by > 0) {
+                    return callback(null, true);
+                }
+                return callback(null, false);
             });
         });
     }
