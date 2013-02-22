@@ -261,7 +261,7 @@ exports.for = function(API, plugin) {
                             password: credentials.password
                         });
                     } else {
-                        console.error("node", self.node.summary);
+                        console.error("node", plugin.node.summary);
                         console.error("credentials", credentials);
                         throw new Error("No suitable credentials found");
                     }
