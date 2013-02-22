@@ -263,6 +263,8 @@ exports.for = function(API, plugin) {
                     } else {
                         console.error("node", plugin.node.summary);
                         console.error("credentials", credentials);
+                        console.error("process.cwd()", process.cwd());
+                        console.error("process.argv", process.argv);
                         throw new Error("No suitable credentials found");
                     }
                 }
