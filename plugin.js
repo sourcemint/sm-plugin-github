@@ -253,12 +253,17 @@ exports.for = function(API, plugin) {
                             type: "oauth",
                             token: credentials.token
                         });
-                    } else {
+                    } else
+                    if (credentials.username && credentials.password) {
                         return callback(null, {
                             type: "basic",
                             username: credentials.username,
                             password: credentials.password
                         });
+                    } else {
+                        console.error("node", self.node.summary);
+                        console.error("credentials", credentials);
+                        throw new Error("No suitable credentials found");
                     }
                 }
                 if (credentials) {
