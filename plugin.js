@@ -265,10 +265,9 @@ exports.for = function(API, plugin) {
                         console.error("credentials", credentials);
                         console.error("process.cwd()", process.cwd());
                         console.error("process.argv", process.argv);
-                        throw new Error("No suitable credentials found");
                     }
                 }
-                if (credentials) {
+                if (credentials && API.UTIL.len(credentials) > 0) {
                     return respond(credentials);
                 }
                 return API.SM_NODE_SERVER.requestOAuth("github", plugin.core.getProfile("name")).then(function(creds) {
