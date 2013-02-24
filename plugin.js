@@ -246,9 +246,6 @@ exports.for = function(API, plugin) {
             }
 
             function authenticate(callback) {
-                if (!plugin.core) {
-                    return callback(new Error("`plugin.core` not set while trying to authenticate"));
-                }
                 var credentials = plugin.core.getCredentials(["github.com/sourcemint/sm-plugin-github/0", "api"]);
                 function respond(credentials) {
                     if (credentials.token) {
