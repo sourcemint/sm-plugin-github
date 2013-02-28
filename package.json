@@ -1,9 +1,9 @@
 {
     "name": "sm-plugin-github",
     "version": "0.1.2",
-    "pm": "npm",
+    "pm": "sm",
     "main": "./plugin.js",
-    "dependencies": {
-        "github": "0.1.x"
+    "mappings": {
+        "github": "github.com/sourcemint/node-github/12a7e92af6a34c06f2e9bd8196100b259eae9199"
     }
 }

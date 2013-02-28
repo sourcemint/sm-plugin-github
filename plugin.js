@@ -7,10 +7,7 @@ var githubApis = {};
 
 exports.for = function(API, plugin) {
 
-    plugin.resolveLocator = function(originalLocator, options, callback) {
-        var self = this;
-
-        var locator = originalLocator.clone();
+    function resolveLocator(locator, options, callback) {
 
         if (!locator.vcs) locator.vcs = "git";
 
@@ -69,8 +66,11 @@ exports.for = function(API, plugin) {
             matchPath = m[2] + m[1] + m[3];
         }
 */
-
-        if((m = matchPath.match(/^\/([^\/]*)\/([^\/]*)\/?(?:(?:tarball|zipball|tree|commit|commits|tags)\/(.*?))?\/?(?:\/([^\/]*))?$/))) {
+        var re = /^\/([^\/]*)\/([^\/]*)\/?(?:(?:tarball|zipball|tree|commit|commits|tags)\/(.*?))?\/?(?:\/([^\/]*))?$/;
+        if (options.matchArchiveUrl) {
+            re = /^\/([^\/]*)\/([^\/]*)\/?(?:(?:tarball|zipball|tree|commit|commits|tags|archive)\/(.*?))?\/?(?:\/([^\/]*))?(\.tar\.gz)?$/;
+        }
+        if((m = matchPath.match(re))) {
 
             var user = m[1];
             var repository = m[2];
@@ -197,8 +197,18 @@ exports.for = function(API, plugin) {
             });
             return callback(null, locator);
         } else {
-            return callback(null, originalLocator);
+            return callback(null, false);
         }
+    }
+
+    plugin.resolveLocator = function(originalLocator, options, callback) {
+        var self = this;
+        var locator = originalLocator.clone();
+        return resolveLocator(locator, options, function(err, locator) {
+            if (err) return callback(err);
+            if (locator) return callback(null, locator);
+            return callback(null, originalLocator);
+        });
     }
 
 
@@ -489,4 +499,48 @@ exports.for = function(API, plugin) {
             });
         });
     }
+
+    plugin.download = function(uri, options, callback) {
+        var self = this;
+        var opts = API.UTIL.copy(options);
+        opts.matchArchiveUrl = true;
+        return resolveLocator({
+            "descriptor": {
+                "pointer": uri
+            }
+        }, opts, function(err, locator) {
+            if (err) return callback(err);
+            if (!locator) return callback(null, false);
+            var opts = API.UTIL.copy(options);
+            opts.time = Date.now();
+            opts.now = true;
+            opts.nohead = true;
+            opts.noredirect = true;
+            return getGithubAPI(opts, function(err, github) {
+                if (err) return callback(err);
+                var id = locator.id.split("/");
+                return github.repos.getArchiveLink({
+                    user: id[0],
+                    repo: id[1],
+                    ref: locator.rev || locator.selector,
+                    archive_format: "tarball"
+                }, function(err, result) {
+                    if (err) {
+                        if (result && result.headers["x-ratelimit-remaining"] === "0") {
+                            err = new Error("Github `x-ratelimit-limit` '" + result.headers["x-ratelimit-limit"] + "' exceeded!");
+                        } else {
+                            if (err.code === 404 || err.code === 403) {
+                                return callback(null, false);
+                            }
+                        }
+                        return callback(err);
+                    }
+                    if (result && result.meta && result.meta.location) {
+                        return self.fetchExternalUri(result.meta.location, options, callback);
+                    }
+                    return callback(null, false);
+                });
+            });
+        });
+    }    
 }
