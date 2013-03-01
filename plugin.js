@@ -536,7 +536,11 @@ exports.for = function(API, plugin) {
                         return callback(err);
                     }
                     if (result && result.meta && result.meta.location) {
-                        return self.fetchExternalUri(result.meta.location, options, callback);
+                        var opts = API.UTIL.copy(options);
+                        opts.time = Date.now();
+                        opts.now = true;
+                        opts.nohead = true;
+                        return self.fetchExternalUri(result.meta.location, opts, callback);
                     }
                     return callback(null, false);
                 });
