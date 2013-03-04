@@ -98,14 +98,31 @@ exports.for = function(API, plugin) {
 
             locator.getLocation = function(type) {
                 var locations = {};
+                locations["pointer"] = "https://github.com/" + user + "/" + repository;
                 locations["homepage"] = "https://github.com/" + user + "/" + repository;
-                locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + (this.rev || this.version || "");
                 locations["uid"] = "github.com/" + user + "/" + repository + "/";
                 locations["git-read"] = "git://github.com/" + user + "/" + repository + ".git";
                 locations["git-write"] = "git@github.com:" + user + "/" + repository + ".git";
                 if (this.rev) {
+                    locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + this.rev;
                     locations["zip"] = "https://github.com/" + user + "/" + repository + "/zipball/" + this.rev;
                     locations["gzip"] = "https://github.com/" + user + "/" + repository + "/tarball/" + this.rev;
+                    locations["archive"] = locations["gzip"];
+                } else
+                if (this.version) {
+                    locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + this.version;
+                    locations["zip"] = "https://github.com/" + user + "/" + repository + "/zipball/" + this.version;
+                    locations["gzip"] = "https://github.com/" + user + "/" + repository + "/tarball/" + this.version;
+                    locations["archive"] = locations["gzip"];
+                } else
+                if (this.url && this.selector && this.url.indexOf(this.selector) !== -1) {
+                    locations["pointer"] = "https://github.com/" + user + "/" + repository + "/commit/" + this.selector;
+                    if (/\/tarball\/[^\/]*$/.test(this.url)) {
+                        locations["gzip"] = "https://github.com/" + user + "/" + repository + "/tarball/" + this.selector;
+                    } else
+                    if (/\/zipball\/[^\/]*$/.test(this.url)) {
+                        locations["zip"] = "https://github.com/" + user + "/" + repository + "/zipball/" + this.selector;
+                    }
                 }
                 return (type)?locations[type]:locations;
             }
