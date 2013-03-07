@@ -228,8 +228,7 @@ exports.for = function(API, plugin) {
         });
     }
 
-
-    function getGithubAPI(options, callback) {
+    var getGithubAPI = plugin.getGithubAPI = function(options, callback) {
         var opts = API.UTIL.copy(options);
         opts.host = "api.github.com";
         opts.port = 443;
