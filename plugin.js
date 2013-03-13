@@ -165,6 +165,8 @@ exports.for = function(API, plugin) {
                                         }
                                         console.error("[1]`locator.id` is", locator.id);
                                         console.error("[1]`result` is", result);
+                                        console.error("ERROR: " + err.message);
+                                        console.error(err.stack);
                                     }
                                     return callback(err);
                                 }
