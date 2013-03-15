@@ -124,6 +124,12 @@ exports.for = function(API, plugin) {
                         locations["zip"] = "https://github.com/" + user + "/" + repository + "/zipball/" + this.selector;
                     }
                 }
+                if (this.selector) {
+                    var m = this.selector.match(/^~(\d*\.\d*)\.\d*$/);
+                    if (m) {
+                        locations["stream-filename"] = "github.com+" + user + "+" + repository + "+" + m[1];
+                    }
+                }
                 return (type)?locations[type]:locations;
             }
 
