@@ -13,7 +13,13 @@ exports.for = function(API, plugin) {
 
         var parsedPointer = API.URI_PARSER.parse2(locator.descriptor.pointer);
 
-        ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to 'github.com', not '" + parsedPointer.hostname + "'");
+        // HACK: Say `sm` is installed via s3 URL and another package declares `sm` via github uri
+        // but package is linked instead.
+        // TODO: Clean this up with resolver refactor.
+        if (parsedPointer.hostname !== "github.com") {
+            return callback(null, false);
+        }
+        //ASSERT(parsedPointer.hostname === "github.com", "`parsedPointer.hostname` must be set to 'github.com', not '" + parsedPointer.hostname + "'");
 
         locator.pm = "github";
         locator.vendor = "github";
